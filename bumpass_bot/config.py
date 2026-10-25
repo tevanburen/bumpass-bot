@@ -11,5 +11,9 @@ POLL_SECONDS = 2
 ATTACHMENT_WAIT_SECONDS = 60
 
 
+# When set, only forward ChatA -> ChatB.
+ONE_WAY = environ.get("ONE_WAY") == "1"
+
+
 def get_chat_ids():
     return environ["CHAT_A_ID"], environ["CHAT_B_ID"]

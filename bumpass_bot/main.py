@@ -93,8 +93,13 @@ def main():
     chat_a = Chat(chat_a_id, db.get_chat_guid(connection, chat_a_id), baseline)
     chat_b = Chat(chat_b_id, db.get_chat_guid(connection, chat_b_id), baseline)
 
+    directions = [(chat_a, chat_b)]
+    if not config.ONE_WAY:
+        directions.append((chat_b, chat_a))
+
+    arrow = "->" if config.ONE_WAY else "<->"
     print(
-        f"Forwarding {chat_a.id} <-> {chat_b.id}, "
+        f"Forwarding {chat_a.id} {arrow} {chat_b.id}, "
         f"existing history ignored up to ROWID {baseline}"
     )
 
@@ -104,7 +109,7 @@ def main():
     while True:
         time.sleep(config.POLL_SECONDS)
 
-        for source, destination in ((chat_a, chat_b), (chat_b, chat_a)):
+        for source, destination in directions:
             try:
                 forward_new_messages(
                     connection, source, destination, sent_tracker, name_resolver
