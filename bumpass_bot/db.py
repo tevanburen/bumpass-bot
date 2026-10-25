@@ -1,11 +1,12 @@
 import sqlite3
 from dataclasses import dataclass
+from os.path import exists, expanduser
 
 from bumpass_bot import config
 
 # Tapbacks/reactions are stored as messages with a non-zero associated_message_type.
 NEW_MESSAGES_QUERY = """
-    SELECT m.ROWID, m.text, m.attributedBody, m.is_from_me, m.cache_has_attachments, h.id
+    SELECT m.ROWID, m.text, m.attributedBody, m.is_from_me, h.id
     FROM message m
     JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
     JOIN chat c ON c.ROWID = cmj.chat_id
@@ -15,6 +16,19 @@ NEW_MESSAGES_QUERY = """
       AND m.associated_message_type = 0
     ORDER BY m.ROWID
 """
+
+ATTACHMENTS_QUERY = """
+    SELECT a.filename, a.mime_type, a.transfer_state
+    FROM attachment a
+    JOIN message_attachment_join maj ON maj.attachment_id = a.ROWID
+    WHERE maj.message_id = ?
+      AND a.is_sticker = 0
+      AND a.mime_type IS NOT NULL
+    ORDER BY a.ROWID
+"""
+
+# attachment.transfer_state value for a finished transfer.
+TRANSFER_COMPLETE = 5
 
 LIST_GROUP_CHATS_QUERY = """
     SELECT c.chat_identifier, c.display_name, COUNT(chj.handle_id)
@@ -27,12 +41,20 @@ LIST_GROUP_CHATS_QUERY = """
 
 
 @dataclass(frozen=True)
+class Attachment:
+    path: str
+    mime_type: str
+
+
+@dataclass(frozen=True)
 class Message:
     rowid: int
     sender: str | None
     text: str
     is_from_me: bool
-    has_attachments: bool
+    attachments: tuple[Attachment, ...]
+    # True while some attachment hasn't finished downloading to disk.
+    attachments_pending: bool
 
 
 def connect():
@@ -67,13 +89,31 @@ def get_max_rowid(connection):
     return connection.execute("SELECT COALESCE(MAX(ROWID), 0) FROM message").fetchone()[0]
 
 
+def get_attachments(connection, message_rowid):
+    """Return (ready attachments, whether any are still downloading)."""
+    ready = []
+    pending = False
+    for filename, mime_type, transfer_state in connection.execute(
+        ATTACHMENTS_QUERY, (message_rowid,)
+    ):
+        path = expanduser(filename) if filename else None
+        if transfer_state == TRANSFER_COMPLETE and path and exists(path):
+            ready.append(Attachment(path=path, mime_type=mime_type))
+        else:
+            pending = True
+
+    return tuple(ready), pending
+
+
 def get_new_messages(connection, chat_id, after_rowid):
     messages = []
-    for rowid, text, body, is_from_me, has_attachments, sender in connection.execute(
+    for rowid, text, body, is_from_me, sender in connection.execute(
         NEW_MESSAGES_QUERY, (chat_id, after_rowid)
     ):
         if text is None and body is not None:
             text = decode_attributed_body(body)
+
+        attachments, attachments_pending = get_attachments(connection, rowid)
 
         messages.append(
             Message(
@@ -82,7 +122,8 @@ def get_new_messages(connection, chat_id, after_rowid):
                 # U+FFFC is the placeholder for an attachment embedded in the text.
                 text=(text or "").replace("￼", "").strip(),
                 is_from_me=bool(is_from_me),
-                has_attachments=bool(has_attachments),
+                attachments=attachments,
+                attachments_pending=attachments_pending,
             )
         )
 
