@@ -89,5 +89,15 @@ def get_new_messages(connection, chat_id, after_rowid):
     return messages
 
 
+def get_chat_guid(connection, chat_id):
+    row = connection.execute(
+        "SELECT guid FROM chat WHERE chat_identifier = ?", (chat_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"No chat found with identifier {chat_id}")
+
+    return row[0]
+
+
 def list_group_chats(connection):
     return connection.execute(LIST_GROUP_CHATS_QUERY).fetchall()
