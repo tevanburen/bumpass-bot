@@ -1,0 +1,10 @@
+[project]
+name = "bumpass-bot"
+version = "0.1.0"
+description = "Forwards messages between two iMessage group chats"
+requires-python = ">=3.13"
+dependencies = ["python-dotenv"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
