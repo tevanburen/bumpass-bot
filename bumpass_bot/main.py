@@ -2,6 +2,7 @@ import time
 from dataclasses import dataclass
 
 from bumpass_bot import config, db
+from bumpass_bot.names import NameResolver
 from bumpass_bot.send import send_file, send_message
 from bumpass_bot.sent_tracker import SentTracker
 
@@ -15,19 +16,20 @@ class Chat:
     waiting_since: float | None = None
 
 
-def format_forward(message, text, has_attachments):
+def format_forward(message, text, has_attachments, name_resolver):
     """Text to send ahead of any files, or "" if there is none."""
     # Own messages are forwarded without a header.
     if message.is_from_me:
         return text
 
+    sender = name_resolver.lookup(message.sender)
     if text:
-        return f"{message.sender}:\n{text}"
+        return f"{sender}:\n{text}"
 
-    return f"{message.sender}:" if has_attachments else ""
+    return f"{sender}:" if has_attachments else ""
 
 
-def forward_new_messages(connection, source, destination, sent_tracker):
+def forward_new_messages(connection, source, destination, sent_tracker, name_resolver):
     messages = db.get_new_messages(connection, source.id, source.last_rowid)
 
     for message in messages:
@@ -62,7 +64,7 @@ def forward_new_messages(connection, source, destination, sent_tracker):
         if not text and not attachments:
             continue
 
-        forwarded_text = format_forward(message, text, bool(attachments))
+        forwarded_text = format_forward(message, text, bool(attachments), name_resolver)
         file_names = ", ".join(attachment.path for attachment in attachments)
         print(f"[{source.id} {message.rowid}] {forwarded_text!r} files=[{file_names}]")
 
@@ -97,13 +99,16 @@ def main():
     )
 
     sent_tracker = SentTracker()
+    name_resolver = NameResolver()
 
     while True:
         time.sleep(config.POLL_SECONDS)
 
         for source, destination in ((chat_a, chat_b), (chat_b, chat_a)):
             try:
-                forward_new_messages(connection, source, destination, sent_tracker)
+                forward_new_messages(
+                    connection, source, destination, sent_tracker, name_resolver
+                )
             except Exception as error:
                 print(f"Error fetching messages, will retry next poll: {error}")
 
