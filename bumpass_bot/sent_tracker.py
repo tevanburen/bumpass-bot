@@ -21,17 +21,23 @@ class SentTracker:
     def __init__(self):
         self._pending = {}
 
-    def record(self, chat_id, key, ttl=TEXT_EXPIRY_SECONDS):
-        self._pending.setdefault(chat_id, []).append((key, time.monotonic() + ttl))
-
-    def consume(self, chat_id, key):
-        """Return True (and forget the entry) if the bot sent this to the chat."""
+    def _live_entries(self, chat_id):
         now = time.monotonic()
-        entries = [
+        return [
             (sent_key, expires_at)
             for sent_key, expires_at in self._pending.get(chat_id, [])
             if expires_at >= now
         ]
+
+    def record(self, chat_id, key, ttl=TEXT_EXPIRY_SECONDS):
+        # Prune here too: in one-way mode the destination is never consumed from.
+        entries = self._live_entries(chat_id)
+        entries.append((key, time.monotonic() + ttl))
+        self._pending[chat_id] = entries
+
+    def consume(self, chat_id, key):
+        """Return True (and forget the entry) if the bot sent this to the chat."""
+        entries = self._live_entries(chat_id)
 
         for index, (sent_key, _) in enumerate(entries):
             if sent_key == key:

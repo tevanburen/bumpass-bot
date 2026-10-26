@@ -1,5 +1,7 @@
 import subprocess
 
+from bumpass_bot import config
+
 # Text and target are passed as argv so no escaping is needed.
 SEND_SCRIPT = """
 on run argv
@@ -14,6 +16,7 @@ def send_message(chat_guid, text):
         check=True,
         capture_output=True,
         text=True,
+        timeout=config.SEND_TIMEOUT_SECONDS,
     )
 
 
@@ -30,4 +33,5 @@ def send_file(chat_guid, path):
         check=True,
         capture_output=True,
         text=True,
+        timeout=config.SEND_TIMEOUT_SECONDS,
     )

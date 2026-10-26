@@ -74,6 +74,9 @@ class NameResolver:
 
     def lookup(self, handle):
         """Return the contact's name, or the raw handle if there is none."""
+        if handle is None:
+            return "Unknown"
+
         key = normalize_handle(handle)
         if key in self._overrides:
             return self._overrides[key]
