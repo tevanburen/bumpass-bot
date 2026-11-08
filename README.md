@@ -9,6 +9,16 @@ Alex:
 message text
 ```
 
+Replies include a one-line quote of the original (shortened to 60 characters), since iMessage can't send an inline reply through AppleScript:
+
+```
+Alex:
+↪ "Sam: dinner at 7?"
+yes
+```
+
+The quote line is italic. AppleScript can't send formatted text, so it uses Unicode italic letters (𝘭𝘪𝘬𝘦 𝘵𝘩𝘪𝘴); digits, punctuation and accented letters stay upright.
+
 Messages you send yourself are forwarded without a header. Images and other files are forwarded after the header as separate messages.
 
 ## Setup

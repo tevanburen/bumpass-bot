@@ -9,17 +9,6 @@ on run argv
 end run
 """
 
-
-def send_message(chat_guid, text):
-    subprocess.run(
-        ["osascript", "-e", SEND_SCRIPT, text, chat_guid],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=config.SEND_TIMEOUT_SECONDS,
-    )
-
-
 SEND_FILE_SCRIPT = """
 on run argv
     tell application "Messages" to send (POSIX file (item 1 of argv)) to chat id (item 2 of argv)
@@ -27,11 +16,20 @@ end run
 """
 
 
-def send_file(chat_guid, path):
-    subprocess.run(
-        ["osascript", "-e", SEND_FILE_SCRIPT, path, chat_guid],
-        check=True,
+def run_osascript(script, *args):
+    result = subprocess.run(
+        ["osascript", "-e", script, *args],
         capture_output=True,
         text=True,
         timeout=config.SEND_TIMEOUT_SECONDS,
     )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"osascript exited {result.returncode}")
+
+
+def send_message(chat_guid, text):
+    run_osascript(SEND_SCRIPT, text, chat_guid)
+
+
+def send_file(chat_guid, path):
+    run_osascript(SEND_FILE_SCRIPT, path, chat_guid)

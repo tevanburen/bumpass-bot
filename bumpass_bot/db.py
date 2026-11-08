@@ -6,7 +6,7 @@ from bumpass_bot import config
 
 # Tapbacks/reactions are stored as messages with a non-zero associated_message_type.
 NEW_MESSAGES_QUERY = """
-    SELECT m.ROWID, m.text, m.attributedBody, m.is_from_me, h.id
+    SELECT m.ROWID, m.text, m.attributedBody, m.is_from_me, h.id, m.thread_originator_guid
     FROM message m
     JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
     JOIN chat c ON c.ROWID = cmj.chat_id
@@ -15,6 +15,16 @@ NEW_MESSAGES_QUERY = """
       AND m.ROWID > ?
       AND m.associated_message_type = 0
     ORDER BY m.ROWID
+"""
+
+LATEST_IN_THREAD_QUERY = """
+    SELECT m.text, m.attributedBody, m.is_from_me, h.id
+    FROM message m
+    LEFT JOIN handle h ON h.ROWID = m.handle_id
+    WHERE m.ROWID < ?
+      AND (m.guid = ? OR m.thread_originator_guid = ?)
+    ORDER BY m.ROWID DESC
+    LIMIT 1
 """
 
 ATTACHMENTS_QUERY = """
@@ -47,6 +57,13 @@ class Attachment:
 
 
 @dataclass(frozen=True)
+class Quote:
+    # None when the quoted message was sent from this Mac's account.
+    sender: str | None
+    text: str
+
+
+@dataclass(frozen=True)
 class Message:
     rowid: int
     sender: str | None
@@ -55,6 +72,8 @@ class Message:
     attachments: tuple[Attachment, ...]
     # True while some attachment hasn't finished downloading to disk.
     attachments_pending: bool
+    # The message this one replies to, if it is a reply and the original is still in the database.
+    reply_to: Quote | None = None
 
 
 def connect():
@@ -105,25 +124,50 @@ def get_attachments(connection, message_rowid):
     return tuple(ready), pending
 
 
+def read_text(text, body):
+    if text is None and body is not None:
+        text = decode_attributed_body(body)
+
+    # U+FFFC is the placeholder for an attachment embedded in the text.
+    return (text or "").replace("￼", "").strip()
+
+
+def get_quote(connection, thread_guid, rowid):
+    """The latest message in the reply's thread from before the reply.
+
+    The database doesn't record which message of a thread was replied to, only
+    the thread's first message (thread_originator_guid). reply_to_guid is no help:
+    it is just the previous message in the chat.
+    """
+    if not thread_guid:
+        return None
+
+    # Some references use the form "p:<part>/<guid>".
+    root = thread_guid.rsplit("/", 1)[-1]
+    row = connection.execute(LATEST_IN_THREAD_QUERY, (rowid, root, thread_guid)).fetchone()
+    if row is None:
+        return None
+
+    text, body, is_from_me, sender = row
+    return Quote(sender=None if is_from_me else sender, text=read_text(text, body))
+
+
 def get_new_messages(connection, chat_id, after_rowid):
     messages = []
-    for rowid, text, body, is_from_me, sender in connection.execute(
+    for rowid, text, body, is_from_me, sender, thread_guid in connection.execute(
         NEW_MESSAGES_QUERY, (chat_id, after_rowid)
     ):
-        if text is None and body is not None:
-            text = decode_attributed_body(body)
-
         attachments, attachments_pending = get_attachments(connection, rowid)
 
         messages.append(
             Message(
                 rowid=rowid,
                 sender=sender,
-                # U+FFFC is the placeholder for an attachment embedded in the text.
-                text=(text or "").replace("￼", "").strip(),
+                text=read_text(text, body),
                 is_from_me=bool(is_from_me),
                 attachments=attachments,
                 attachments_pending=attachments_pending,
+                reply_to=get_quote(connection, thread_guid, rowid),
             )
         )
 

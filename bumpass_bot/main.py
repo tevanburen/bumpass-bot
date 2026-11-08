@@ -1,10 +1,21 @@
 import time
 from dataclasses import dataclass
+from string import ascii_lowercase, ascii_uppercase
 
 from bumpass_bot import config, db
 from bumpass_bot.names import NameResolver
 from bumpass_bot.send import send_file, send_message
 from bumpass_bot.sent_tracker import SentTracker
+
+
+QUOTE_MAX_CHARS = 60
+
+# Messages can't send formatted text through AppleScript, so italics are the
+# Mathematical Sans-Serif Italic letters. Digits, punctuation and non-ASCII letters have none.
+ITALIC_TABLE = {
+    **{ord(letter): chr(0x1D608 + index) for index, letter in enumerate(ascii_uppercase)},
+    **{ord(letter): chr(0x1D622 + index) for index, letter in enumerate(ascii_lowercase)},
+}
 
 
 @dataclass
@@ -16,17 +27,39 @@ class Chat:
     waiting_since: float | None = None
 
 
+def format_quote(quote, name_resolver):
+    """One line showing the message a reply points at."""
+    snippet = " ".join(quote.text.split()) or "[attachment]"
+    if len(snippet) > QUOTE_MAX_CHARS:
+        snippet = snippet[:QUOTE_MAX_CHARS].rstrip() + "…"
+
+    # A quote of our own account's message has no author, and when that message
+    # was itself forwarded by the bot its text already starts with the original sender.
+    if quote.sender is None:
+        line = f'↪ "{snippet}"'
+    else:
+        line = f'↪ "{name_resolver.lookup(quote.sender)}: {snippet}"'
+
+    return line.translate(ITALIC_TABLE)
+
+
 def format_forward(message, text, has_attachments, name_resolver):
     """Text to send ahead of any files, or "" if there is none."""
+    if not text and not has_attachments:
+        return ""
+
+    lines = []
     # Own messages are forwarded without a header.
-    if message.is_from_me:
-        return text
+    if not message.is_from_me:
+        lines.append(f"{name_resolver.lookup(message.sender)}:")
 
-    sender = name_resolver.lookup(message.sender)
+    if message.reply_to:
+        lines.append(format_quote(message.reply_to, name_resolver))
+
     if text:
-        return f"{sender}:\n{text}"
+        lines.append(text)
 
-    return f"{sender}:" if has_attachments else ""
+    return "\n".join(lines)
 
 
 def forward_new_messages(connection, source, destination, sent_tracker, name_resolver):
