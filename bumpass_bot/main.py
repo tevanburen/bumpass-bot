@@ -29,7 +29,9 @@ class Chat:
 
 def format_quote(quote, name_resolver):
     """One line showing the message a reply points at."""
-    snippet = " ".join(quote.text.split()) or "[attachment]"
+    # Drop the parent's own quote line, which is there when it was a reply the bot forwarded.
+    own_lines = (line for line in quote.text.splitlines() if not line.startswith("↪"))
+    snippet = " ".join(" ".join(own_lines).split()) or "[attachment]"
     if len(snippet) > QUOTE_MAX_CHARS:
         snippet = snippet[:QUOTE_MAX_CHARS].rstrip() + "…"
 
