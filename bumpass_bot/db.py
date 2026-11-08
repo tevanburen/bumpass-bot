@@ -23,6 +23,7 @@ LATEST_IN_THREAD_QUERY = """
     LEFT JOIN handle h ON h.ROWID = m.handle_id
     WHERE m.ROWID < ?
       AND (m.guid = ? OR m.thread_originator_guid = ?)
+      AND m.associated_message_type = 0
     ORDER BY m.ROWID DESC
     LIMIT 1
 """
