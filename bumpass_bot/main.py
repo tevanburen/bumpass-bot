@@ -45,6 +45,16 @@ def format_quote(quote, name_resolver):
     return line.translate(ITALIC_TABLE)
 
 
+def is_forwarded_reaction(quote):
+    """Whether the quoted message is a reaction the bot forwarded as text."""
+    lines = quote.text.splitlines()
+    return (
+        len(lines) > 1
+        and lines[-1].startswith("reacted ")
+        and any(line.startswith("↪") for line in lines)
+    )
+
+
 def format_forward(message, text, has_attachments, name_resolver):
     """Text to send ahead of any files, or "" if there is none."""
     if not text and not has_attachments:
@@ -95,6 +105,13 @@ def forward_new_messages(connection, source, destination, sent_tracker, name_res
                 for attachment in attachments
                 if not sent_tracker.consume_file(source.id, attachment)
             )
+
+        if message.reaction:
+            # Without the message that was reacted to, "reacted 😂" says nothing.
+            if not message.reply_to or is_forwarded_reaction(message.reply_to):
+                continue
+
+            text = f"reacted {message.reaction}"
 
         if not text and not attachments:
             continue

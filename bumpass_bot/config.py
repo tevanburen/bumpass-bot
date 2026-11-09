@@ -15,6 +15,8 @@ SEND_TIMEOUT_SECONDS = 30
 
 # When set, only forward ChatA -> ChatB.
 ONE_WAY = environ.get("ONE_WAY") == "1"
+# Reactions are forwarded as text unless this is set to 0.
+REACTIONS = environ.get("REACTIONS") != "0"
 
 
 def get_chat_ids():

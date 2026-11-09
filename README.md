@@ -17,6 +17,14 @@ Alex:
 yes
 ```
 
+Reactions are forwarded the same way, as a message that quotes the one reacted to. Messages can't send a real tapback through AppleScript, and removed reactions aren't forwarded. Reacting to one of these forwarded reactions does nothing:
+
+```
+Alex:
+↪ "Sam: dinner at 7?"
+reacted 😂
+```
+
 The quote line is italic. AppleScript can't send formatted text, so it uses Unicode italic letters (𝘭𝘪𝘬𝘦 𝘵𝘩𝘪𝘴); digits, punctuation and accented letters stay upright.
 
 Messages you send yourself are forwarded without a header. Images and other files are forwarded after the header as separate messages.
@@ -38,6 +46,7 @@ uv run python -m bumpass_bot.list_chats
 | `CHAT_A_ID`, `CHAT_B_ID` | `chat_identifier` of each chat |
 | `ONE_WAY` | Set to `1` to only forward A -> B (default is both directions) |
 | `NAME_OVERRIDES` | `handle=Name` pairs, comma-separated, checked before Contacts |
+| `REACTIONS` | Set to `0` to stop forwarding reactions (default is on) |
 
 ### Permissions
 
@@ -62,4 +71,4 @@ Only messages that arrive after startup are forwarded.
 
 ## Not handled yet
 
-Edits and unsends, reactions, stickers, and link previews. The last-seen `ROWID` isn't persisted, so messages that arrive while the bot is down are skipped.
+Edits and unsends, removed reactions, stickers, and link previews. The last-seen `ROWID` isn't persisted, so messages that arrive while the bot is down are skipped.

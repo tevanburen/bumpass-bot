@@ -5,16 +5,29 @@ from os.path import exists, expanduser
 from bumpass_bot import config
 
 # Tapbacks/reactions are stored as messages with a non-zero associated_message_type.
+# 2000-2005 are the standard tapbacks and 2006 is a custom emoji. Removals (3000+) are left out.
+REACTION_EMOJI = {2000: "❤️", 2001: "👍", 2002: "👎", 2003: "😂", 2004: "‼️", 2005: "❓"}
+CUSTOM_EMOJI_REACTION = 2006
+
 NEW_MESSAGES_QUERY = """
-    SELECT m.ROWID, m.text, m.attributedBody, m.is_from_me, h.id, m.thread_originator_guid
+    SELECT m.ROWID, m.text, m.attributedBody, m.is_from_me, h.id, m.thread_originator_guid,
+           m.associated_message_type, m.associated_message_guid, m.associated_message_emoji
     FROM message m
     JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
     JOIN chat c ON c.ROWID = cmj.chat_id
     LEFT JOIN handle h ON h.ROWID = m.handle_id
     WHERE c.chat_identifier = ?
       AND m.ROWID > ?
-      AND m.associated_message_type = 0
+      AND (m.associated_message_type = 0
+           OR (? AND m.associated_message_type BETWEEN 2000 AND 2006))
     ORDER BY m.ROWID
+"""
+
+MESSAGE_BY_GUID_QUERY = """
+    SELECT m.text, m.attributedBody, m.is_from_me, h.id
+    FROM message m
+    LEFT JOIN handle h ON h.ROWID = m.handle_id
+    WHERE m.guid = ?
 """
 
 LATEST_IN_THREAD_QUERY = """
@@ -74,7 +87,10 @@ class Message:
     # True while some attachment hasn't finished downloading to disk.
     attachments_pending: bool
     # The message this one replies to, if it is a reply and the original is still in the database.
+    # For a reaction this is the message that was reacted to.
     reply_to: Quote | None = None
+    # The emoji, when this is a reaction. Its text is empty.
+    reaction: str | None = None
 
 
 def connect():
@@ -149,16 +165,44 @@ def get_quote(connection, thread_guid, rowid):
     if row is None:
         return None
 
+    return quote_from_row(row)
+
+
+def quote_from_row(row):
     text, body, is_from_me, sender = row
     return Quote(sender=None if is_from_me else sender, text=read_text(text, body))
 
 
+def get_reaction_target(connection, associated_guid):
+    # The reference looks like "p:<part>/<guid>", or "bp:<guid>" for a balloon.
+    guid = associated_guid.rsplit("/", 1)[-1].removeprefix("bp:")
+    row = connection.execute(MESSAGE_BY_GUID_QUERY, (guid,)).fetchone()
+    return quote_from_row(row) if row else None
+
+
 def get_new_messages(connection, chat_id, after_rowid):
     messages = []
-    for rowid, text, body, is_from_me, sender, thread_guid in connection.execute(
-        NEW_MESSAGES_QUERY, (chat_id, after_rowid)
-    ):
+    for (
+        rowid,
+        text,
+        body,
+        is_from_me,
+        sender,
+        thread_guid,
+        message_type,
+        associated_guid,
+        custom_emoji,
+    ) in connection.execute(NEW_MESSAGES_QUERY, (chat_id, after_rowid, int(config.REACTIONS))):
         attachments, attachments_pending = get_attachments(connection, rowid)
+
+        if message_type:
+            # A reaction's own text is Messages' summary ("Loved ..."), not something to forward.
+            text = ""
+            reaction = custom_emoji if message_type == CUSTOM_EMOJI_REACTION else REACTION_EMOJI[message_type]
+            reply_to = get_reaction_target(connection, associated_guid)
+        else:
+            reaction = None
+            reply_to = get_quote(connection, thread_guid, rowid)
 
         messages.append(
             Message(
@@ -168,7 +212,8 @@ def get_new_messages(connection, chat_id, after_rowid):
                 is_from_me=bool(is_from_me),
                 attachments=attachments,
                 attachments_pending=attachments_pending,
-                reply_to=get_quote(connection, thread_guid, rowid),
+                reply_to=reply_to,
+                reaction=reaction,
             )
         )
 
