@@ -11,7 +11,7 @@ Python 3.13 project managed with uv. See README.md for setup and behavior.
 ## Layout
 
 - `bumpass_bot/main.py`: polling loop and forwarding logic.
-- `bumpass_bot/db.py`: read-only `chat.db` queries (messages, attachments, reply quotes, chat GUIDs).
+- `bumpass_bot/db.py`: read-only `chat.db` queries (messages, attachments, reply quotes, edits, chat GUIDs).
 - `bumpass_bot/send.py`: AppleScript sending via `osascript`.
 - `bumpass_bot/sent_tracker.py`: loop guard for two-way forwarding.
 - `bumpass_bot/names.py`: Contacts lookup with `NAME_OVERRIDES`.

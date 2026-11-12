@@ -25,7 +25,15 @@ Alex:
 reacted 😂
 ```
 
-The quote line is italic. AppleScript can't send formatted text, so it uses Unicode italic letters (𝘭𝘪𝘬𝘦 𝘵𝘩𝘪𝘴); digits, punctuation and accented letters stay upright.
+Edits are sent as a new message with the previous text, since a sent message can't be changed through AppleScript:
+
+```
+Alex edited:
+↪ "was: dinner at 6?"
+dinner at 7?
+```
+
+The quote lines are italic. AppleScript can't send formatted text, so it uses Unicode italic letters (𝘭𝘪𝘬𝘦 𝘵𝘩𝘪𝘴); digits, punctuation and accented letters stay upright.
 
 Messages you send yourself are forwarded without a header. Images and other files are forwarded after the header as separate messages.
 
@@ -47,6 +55,7 @@ uv run python -m bumpass_bot.list_chats
 | `ONE_WAY` | Set to `1` to only forward A -> B (default is both directions) |
 | `NAME_OVERRIDES` | `handle=Name` pairs, comma-separated, checked before Contacts |
 | `REACTIONS` | Set to `0` to stop forwarding reactions (default is on) |
+| `EDITS` | Set to `0` to stop forwarding edits (default is on) |
 
 ### Permissions
 
@@ -63,7 +72,7 @@ Only messages that arrive after startup are forwarded.
 
 ## How it works
 
-- `db.py` reads `chat.db` read-only, tracking a last-seen `ROWID` per chat.
+- `db.py` reads `chat.db` read-only, tracking a last-seen `ROWID` per chat. Edits change a row in place, so they are found by `date_edited` instead.
 - `main.py` forwards new messages in each direction. Incoming attachments are held up to 60s while they download.
 - `sent_tracker.py` remembers what the bot sent so its own messages are ignored when they show up in the destination chat. This is what stops infinite loops in two-way mode.
 - `names.py` maps phone numbers and emails to names from Contacts.
@@ -71,4 +80,4 @@ Only messages that arrive after startup are forwarded.
 
 ## Not handled yet
 
-Edits and unsends, removed reactions, stickers, and link previews. The last-seen `ROWID` isn't persisted, so messages that arrive while the bot is down are skipped.
+Unsends, removed reactions, stickers, and link previews. The last-seen `ROWID` isn't persisted, so messages that arrive while the bot is down are skipped.

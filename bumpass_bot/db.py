@@ -1,3 +1,4 @@
+import plistlib
 import sqlite3
 from dataclasses import dataclass
 from os.path import exists, expanduser
@@ -39,6 +40,22 @@ LATEST_IN_THREAD_QUERY = """
       AND m.associated_message_type = 0
     ORDER BY m.ROWID DESC
     LIMIT 1
+"""
+
+# An edit rewrites the original row in place, so it keeps its ROWID and only date_edited changes.
+EDITED_MESSAGES_QUERY = """
+    SELECT m.ROWID, m.text, m.attributedBody, m.is_from_me, h.id, m.date_edited,
+           m.message_summary_info
+    FROM message m
+    JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
+    JOIN chat c ON c.ROWID = cmj.chat_id
+    LEFT JOIN handle h ON h.ROWID = m.handle_id
+    WHERE c.chat_identifier = ?
+      AND m.date_edited > ?
+      AND m.date_retracted = 0
+      AND m.ROWID > ?
+      AND m.associated_message_type = 0
+    ORDER BY m.date_edited
 """
 
 ATTACHMENTS_QUERY = """
@@ -93,6 +110,18 @@ class Message:
     reaction: str | None = None
 
 
+@dataclass(frozen=True)
+class Edit:
+    rowid: int
+    sender: str | None
+    # The message as it reads now.
+    text: str
+    # What it said before this edit, if Messages kept the history.
+    previous_text: str | None
+    is_from_me: bool
+    edited_at: int
+
+
 def connect():
     # Read-only so we can never corrupt Messages' database.
     return sqlite3.connect(f"file:{config.DB_PATH}?mode=ro", uri=True)
@@ -123,6 +152,10 @@ def decode_attributed_body(blob):
 
 def get_max_rowid(connection):
     return connection.execute("SELECT COALESCE(MAX(ROWID), 0) FROM message").fetchone()[0]
+
+
+def get_max_date_edited(connection):
+    return connection.execute("SELECT COALESCE(MAX(date_edited), 0) FROM message").fetchone()[0]
 
 
 def get_attachments(connection, message_rowid):
@@ -218,6 +251,43 @@ def get_new_messages(connection, chat_id, after_rowid):
         )
 
     return messages
+
+
+def get_previous_text(summary_info):
+    """The text before the latest edit.
+
+    Messages keeps every version in message_summary_info under "ec", oldest first
+    with the current one last, keyed by message part.
+    """
+    if summary_info is None:
+        return None
+
+    try:
+        history = plistlib.loads(summary_info).get("ec", {})
+        for versions in history.values():
+            if len(versions) >= 2:
+                return read_text(None, versions[-2].get("t"))
+    except (ValueError, IndexError):
+        pass
+
+    return None
+
+
+def get_new_edits(connection, chat_id, after_edit, after_rowid):
+    """Edits made after `after_edit` to messages with a ROWID past `after_rowid`."""
+    return [
+        Edit(
+            rowid=rowid,
+            sender=sender,
+            text=read_text(text, body),
+            previous_text=get_previous_text(summary_info),
+            is_from_me=bool(is_from_me),
+            edited_at=edited_at,
+        )
+        for rowid, text, body, is_from_me, sender, edited_at, summary_info in connection.execute(
+            EDITED_MESSAGES_QUERY, (chat_id, after_edit, after_rowid)
+        )
+    ]
 
 
 def get_chat_guid(connection, chat_id):

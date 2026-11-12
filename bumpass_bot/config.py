@@ -17,6 +17,8 @@ SEND_TIMEOUT_SECONDS = 30
 ONE_WAY = environ.get("ONE_WAY") == "1"
 # Reactions are forwarded as text unless this is set to 0.
 REACTIONS = environ.get("REACTIONS") != "0"
+# Edits are forwarded as a new message unless this is set to 0.
+EDITS = environ.get("EDITS") != "0"
 
 
 def get_chat_ids():

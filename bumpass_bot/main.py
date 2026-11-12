@@ -23,17 +23,27 @@ class Chat:
     id: str
     guid: str
     last_rowid: int
+    # Edits are only forwarded for messages from after startup, which are the ones we forwarded.
+    start_rowid: int
+    # The newest date_edited we've handled.
+    last_edit: int
     # When we started waiting on the current message's attachments to download.
     waiting_since: float | None = None
 
 
-def format_quote(quote, name_resolver):
-    """One line showing the message a reply points at."""
-    # Drop the parent's own quote line, which is there when it was a reply the bot forwarded.
-    own_lines = (line for line in quote.text.splitlines() if not line.startswith("↪"))
+def shorten(text):
+    # Drop a quote line of its own, which is there when the text was a reply the bot forwarded.
+    own_lines = (line for line in text.splitlines() if not line.startswith("↪"))
     snippet = " ".join(" ".join(own_lines).split()) or "[attachment]"
     if len(snippet) > QUOTE_MAX_CHARS:
         snippet = snippet[:QUOTE_MAX_CHARS].rstrip() + "…"
+
+    return snippet
+
+
+def format_quote(quote, name_resolver):
+    """One line showing the message a reply points at."""
+    snippet = shorten(quote.text)
 
     # A quote of our own account's message has no author, and when that message
     # was itself forwarded by the bot its text already starts with the original sender.
@@ -72,6 +82,40 @@ def format_forward(message, text, has_attachments, name_resolver):
         lines.append(text)
 
     return "\n".join(lines)
+
+
+def format_edit(edit, name_resolver):
+    lines = []
+    # Own messages are forwarded without a header.
+    if not edit.is_from_me:
+        lines.append(f"{name_resolver.lookup(edit.sender)} edited:")
+
+    if edit.previous_text:
+        lines.append(f'↪ "was: {shorten(edit.previous_text)}"'.translate(ITALIC_TABLE))
+
+    lines.append(edit.text)
+    return "\n".join(lines)
+
+
+def forward_edits(connection, source, destination, sent_tracker, name_resolver):
+    # A message already sent can't be edited through AppleScript, so an edit goes out as a new one.
+    edits = db.get_new_edits(connection, source.id, source.last_edit, source.start_rowid)
+
+    for edit in edits:
+        source.last_edit = edit.edited_at
+
+        # Not forwarded yet, so it goes out with its edited text as a normal message.
+        if edit.rowid > source.last_rowid or not edit.text:
+            continue
+
+        forwarded_text = format_edit(edit, name_resolver)
+        print(f"[{source.id} {edit.rowid}] edit {forwarded_text!r}")
+
+        try:
+            send_message(destination.guid, forwarded_text)
+            sent_tracker.record(destination.id, forwarded_text)
+        except Exception as error:
+            print(f"Error sending edit of message {edit.rowid}: {error}")
 
 
 def forward_new_messages(connection, source, destination, sent_tracker, name_resolver):
@@ -142,8 +186,9 @@ def main():
 
     # Baseline so we only react to messages that arrive after startup.
     baseline = db.get_max_rowid(connection)
-    chat_a = Chat(chat_a_id, db.get_chat_guid(connection, chat_a_id), baseline)
-    chat_b = Chat(chat_b_id, db.get_chat_guid(connection, chat_b_id), baseline)
+    last_edit = db.get_max_date_edited(connection)
+    chat_a = Chat(chat_a_id, db.get_chat_guid(connection, chat_a_id), baseline, baseline, last_edit)
+    chat_b = Chat(chat_b_id, db.get_chat_guid(connection, chat_b_id), baseline, baseline, last_edit)
 
     directions = [(chat_a, chat_b)]
     if not config.ONE_WAY:
@@ -162,6 +207,13 @@ def main():
         time.sleep(config.POLL_SECONDS)
 
         for source, destination in directions:
+            # Edits go first so one to a message we haven't forwarded yet is left to the normal path.
+            if config.EDITS:
+                try:
+                    forward_edits(connection, source, destination, sent_tracker, name_resolver)
+                except Exception as error:
+                    print(f"Error fetching edits, will retry next poll: {error}")
+
             try:
                 forward_new_messages(
                     connection, source, destination, sent_tracker, name_resolver
