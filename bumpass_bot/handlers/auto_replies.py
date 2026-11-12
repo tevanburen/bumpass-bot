@@ -26,8 +26,13 @@ def based_check(bot, message):
     _send_percent(bot, "Based")
 
 
+def cringe_check(bot, message):
+    _send_percent(bot, "Cringe")
+
+
 AUTO_REPLIES = {
     "based check": based_check,
+    "cringe check": cringe_check,
 }
 
 
