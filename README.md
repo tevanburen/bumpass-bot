@@ -46,6 +46,15 @@ Send one of these on its own in either chat. The bot answers in that chat, and t
 | `/test` | "The Bumpass Bot is active" |
 | `/members` | Everyone in each chat, not counting the bot's account |
 
+### Auto replies
+
+A message containing one of these phrases anywhere, in any case, is forwarded as usual, and then the bot replies. A message with several phrases gets each reply.
+
+| Phrase | Reply |
+| --- | --- |
+| "based check" | A random percentage from 0 to 100, like "73% Based", in both chats |
+| "cringe check" | A random percentage from 0 to 100, like "41% Cringe", in both chats |
+
 ## Setup
 
 Requires macOS and [uv](https://docs.astral.sh/uv/).
@@ -105,6 +114,7 @@ All in `bumpass_bot/`:
 | `handlers/__init__.py` | `HANDLERS`, the order events run through. |
 | `handlers/commands.py` | Slash commands. |
 | `handlers/forward.py` | Forwarding between the two chats, and its text format. |
+| `handlers/auto_replies.py` | Replies to messages that contain a phrase. |
 | `db.py` | Read-only `chat.db` queries. |
 | `send.py` | Sending with `osascript`. Only `Bot` calls it. |
 | `sent_tracker.py` | Remembers the bot's sends so their echoes are dropped. |
@@ -130,9 +140,26 @@ COMMANDS = {
 
 A message that is exactly the command runs it, ignoring case and surrounding spaces. A command isn't forwarded, and its reply stays in the chat it was sent in.
 
+## Adding an auto reply
+
+Write a function that takes the bot and the message, and add it to `AUTO_REPLIES` in `handlers/auto_replies.py` with the phrase that triggers it:
+
+```python
+def based_check(bot, message):
+    _send_percent(bot, "Based")
+
+
+AUTO_REPLIES = {
+    "based check": based_check,
+    "cringe check": cringe_check,
+}
+```
+
+A message containing the phrase anywhere runs it, ignoring case. Unlike a command, the message is still forwarded, and the reply comes after it. Reply with `send_to_both_chats(bot, text)` for both chats, or `bot.send(message.chat, text)` for just the chat it came from.
+
 ## Adding a handler
 
-For anything other than a command, write a handler. It's a function that takes the bot and an event (any `Message`, `Reaction` or `Edit`). Add it to `HANDLERS` in `handlers/__init__.py`. `commands.handle` and `forward.handle` are both handlers.
+For anything other than a command or an auto reply, write a handler. It's a function that takes the bot and an event (any `Message`, `Reaction` or `Edit`). Add it to `HANDLERS` in `handlers/__init__.py`. `commands.handle`, `forward.handle` and `auto_replies.handle` are all handlers.
 
 - Return `True` to stop the handlers after it. Put it before `forward.handle` if it should keep something from being forwarded.
 - Send with `bot.send(chat, text)` and `bot.send_file(chat, path)`, never `send.py` directly. The bot needs to know what it sent, or its own messages come back as new events.
