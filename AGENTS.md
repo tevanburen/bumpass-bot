@@ -10,16 +10,7 @@ Python 3.13 project managed with uv. See README.md for setup and behavior.
 
 ## Layout
 
-- `bumpass_bot/main.py`: entry point, sets up logging and runs the bot.
-- `bumpass_bot/bot.py`: `Bot`, the polling loop. It owns the watermarks, attachment waiting and the loop guard, dispatches events to handlers, and exposes `send`, `send_file` and `name`.
-- `bumpass_bot/events.py`: `Message`, `Reaction`, `Edit` and `Quote`, `Attachment`, the types handlers get.
-- `bumpass_bot/handlers/`: `HANDLERS` (in order) in `__init__.py`; `forward.py` is the chat-to-chat forwarding and its text format; `status.py` answers `/test` and is the minimal example handler; `members.py` answers `/members`; `command.py` has `is_command` for matching slash commands.
-- `bumpass_bot/db.py`: read-only `chat.db` queries that build events.
-- `bumpass_bot/send.py`: AppleScript sending via `osascript`. Only `Bot` calls it.
-- `bumpass_bot/sent_tracker.py`: remembers the bot's sends so their echoes are dropped.
-- `bumpass_bot/names.py`: Contacts lookup for display names.
-- `bumpass_bot/formatting.py`: text helpers (`italic`, `truncate`).
-- `bumpass_bot/config.py`: env config.
+See "How it works", "Layout", "Adding a command" and "Adding a handler" in README.md, and keep them current when files move.
 
 ## Gotchas
 

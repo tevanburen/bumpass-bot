@@ -93,27 +93,47 @@ Before an event reaches handlers, the bot:
 - waits up to 60s for incoming attachments to download.
 - drops its own sends, which come back as `is_from_me` messages. This is what stops two-way forwarding from looping.
 
-Other modules:
+### Layout
 
-- `db.py` reads `chat.db` read-only.
-- `send.py` sends with `osascript`.
-- `names.py` maps phone numbers and emails to Contacts names.
-- `formatting.py` has text helpers such as `italic`.
+All in `bumpass_bot/`:
+
+| File | What it does |
+| --- | --- |
+| `main.py` | Entry point (`uv run bumpass-bot`). Sets up logging and runs the bot. |
+| `bot.py` | `Bot`: the polling loop, attachment waiting, the loop guard, and the `send`/`send_file`/`name`/`members` API handlers use. |
+| `events.py` | `Message`, `Reaction`, `Edit`, `Quote`, `Attachment`: what handlers receive. |
+| `handlers/__init__.py` | `HANDLERS`, the order events run through. |
+| `handlers/commands.py` | Slash commands. |
+| `handlers/forward.py` | Forwarding between the two chats, and its text format. |
+| `db.py` | Read-only `chat.db` queries. |
+| `send.py` | Sending with `osascript`. Only `Bot` calls it. |
+| `sent_tracker.py` | Remembers the bot's sends so their echoes are dropped. |
+| `names.py` | Phone number and email to Contacts name. |
+| `formatting.py` | Text helpers such as `italic`. |
+| `config.py` | Settings from `.env`. |
+| `list_chats.py` | Prints group chat IDs for setup. |
+
+## Adding a command
+
+Write a function that takes the bot and the message, and add it to `COMMANDS` in `handlers/commands.py`:
+
+```python
+def test(bot, message):
+    bot.send(message.chat, "The Bumpass Bot is active")
+
+
+COMMANDS = {
+    "/test": test,
+    "/members": members,
+}
+```
+
+A message that is exactly the command runs it, ignoring case and surrounding spaces. A command isn't forwarded, and its reply stays in the chat it was sent in.
 
 ## Adding a handler
 
-A handler is a function that takes the bot and an event. Add it to `HANDLERS` in `handlers/__init__.py`. `handlers/status.py` is the smallest example: it answers `/test` with "The Bumpass Bot is active" in the same chat and stops the command from being forwarded:
+For anything other than a command, write a handler. It's a function that takes the bot and an event (any `Message`, `Reaction` or `Edit`). Add it to `HANDLERS` in `handlers/__init__.py`. `commands.handle` and `forward.handle` are both handlers.
 
-```python
-def handle(bot, event):
-    if not is_command(event, "/test"):
-        return False
-
-    bot.send(event.chat, REPLY)
-    return True
-```
-
-`is_command` (`handlers/command.py`) matches a text-only message that is exactly the command, ignoring case and surrounding spaces.
 - Return `True` to stop the handlers after it. Put it before `forward.handle` if it should keep something from being forwarded.
 - Send with `bot.send(chat, text)` and `bot.send_file(chat, path)`, never `send.py` directly. The bot needs to know what it sent, or its own messages come back as new events.
 - `bot.name(handle)` gives a display name. `bot.chat_ids` are the watched chats, and `bot.chat_name(chat)` and `bot.members(chat)` describe them.
