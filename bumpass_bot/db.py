@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from os.path import exists, expanduser
 
 from bumpass_bot import config
+from bumpass_bot.events import Attachment, Edit, Message, Quote, Reaction
 
 # Tapbacks/reactions are stored as messages with a non-zero associated_message_type.
 # 2000-2005 are the standard tapbacks and 2006 is a custom emoji. Removals (3000+) are left out.
@@ -19,8 +20,7 @@ NEW_MESSAGES_QUERY = """
     LEFT JOIN handle h ON h.ROWID = m.handle_id
     WHERE c.chat_identifier = ?
       AND m.ROWID > ?
-      AND (m.associated_message_type = 0
-           OR (? AND m.associated_message_type BETWEEN 2000 AND 2006))
+      AND (m.associated_message_type = 0 OR m.associated_message_type BETWEEN 2000 AND 2006)
     ORDER BY m.ROWID
 """
 
@@ -82,44 +82,10 @@ LIST_GROUP_CHATS_QUERY = """
 
 
 @dataclass(frozen=True)
-class Attachment:
-    path: str
-    mime_type: str
-
-
-@dataclass(frozen=True)
-class Quote:
-    # None when the quoted message was sent from this Mac's account.
-    sender: str | None
-    text: str
-
-
-@dataclass(frozen=True)
-class Message:
-    rowid: int
-    sender: str | None
-    text: str
-    is_from_me: bool
-    attachments: tuple[Attachment, ...]
+class NewEvent:
+    event: Message | Reaction
     # True while some attachment hasn't finished downloading to disk.
-    attachments_pending: bool
-    # The message this one replies to, if it is a reply and the original is still in the database.
-    # For a reaction this is the message that was reacted to.
-    reply_to: Quote | None = None
-    # The emoji, when this is a reaction. Its text is empty.
-    reaction: str | None = None
-
-
-@dataclass(frozen=True)
-class Edit:
-    rowid: int
-    sender: str | None
-    # The message as it reads now.
-    text: str
-    # What it said before this edit, if Messages kept the history.
-    previous_text: str | None
-    is_from_me: bool
-    edited_at: int
+    attachments_pending: bool = False
 
 
 def connect():
@@ -214,7 +180,8 @@ def get_reaction_target(connection, associated_guid):
 
 
 def get_new_messages(connection, chat_id, after_rowid):
-    messages = []
+    """Messages and reactions in the chat with a ROWID past `after_rowid`, oldest first."""
+    new_events = []
     for (
         rowid,
         text,
@@ -225,32 +192,34 @@ def get_new_messages(connection, chat_id, after_rowid):
         message_type,
         associated_guid,
         custom_emoji,
-    ) in connection.execute(NEW_MESSAGES_QUERY, (chat_id, after_rowid, int(config.REACTIONS))):
-        attachments, attachments_pending = get_attachments(connection, rowid)
-
+    ) in connection.execute(NEW_MESSAGES_QUERY, (chat_id, after_rowid)):
         if message_type:
-            # A reaction's own text is Messages' summary ("Loved ..."), not something to forward.
-            text = ""
-            reaction = custom_emoji if message_type == CUSTOM_EMOJI_REACTION else REACTION_EMOJI[message_type]
-            reply_to = get_reaction_target(connection, associated_guid)
-        else:
-            reaction = None
-            reply_to = get_quote(connection, thread_guid, rowid)
-
-        messages.append(
-            Message(
+            # A reaction row's own text is Messages' summary ("Loved ..."), so it's left out.
+            emoji = custom_emoji if message_type == CUSTOM_EMOJI_REACTION else REACTION_EMOJI[message_type]
+            reaction = Reaction(
+                chat=chat_id,
                 rowid=rowid,
                 sender=sender,
-                text=read_text(text, body),
                 is_from_me=bool(is_from_me),
-                attachments=attachments,
-                attachments_pending=attachments_pending,
-                reply_to=reply_to,
-                reaction=reaction,
+                emoji=emoji,
+                target=get_reaction_target(connection, associated_guid),
             )
-        )
+            new_events.append(NewEvent(reaction))
+            continue
 
-    return messages
+        attachments, attachments_pending = get_attachments(connection, rowid)
+        message = Message(
+            chat=chat_id,
+            rowid=rowid,
+            sender=sender,
+            is_from_me=bool(is_from_me),
+            text=read_text(text, body),
+            attachments=attachments,
+            reply_to=get_quote(connection, thread_guid, rowid),
+        )
+        new_events.append(NewEvent(message, attachments_pending))
+
+    return new_events
 
 
 def get_previous_text(summary_info):
@@ -274,15 +243,19 @@ def get_previous_text(summary_info):
 
 
 def get_new_edits(connection, chat_id, after_edit, after_rowid):
-    """Edits made after `after_edit` to messages with a ROWID past `after_rowid`."""
+    """(date_edited, Edit) for edits made after `after_edit` to messages with a ROWID
+    past `after_rowid`, oldest edit first."""
     return [
-        Edit(
-            rowid=rowid,
-            sender=sender,
-            text=read_text(text, body),
-            previous_text=get_previous_text(summary_info),
-            is_from_me=bool(is_from_me),
-            edited_at=edited_at,
+        (
+            edited_at,
+            Edit(
+                chat=chat_id,
+                rowid=rowid,
+                sender=sender,
+                is_from_me=bool(is_from_me),
+                text=read_text(text, body),
+                previous_text=get_previous_text(summary_info),
+            ),
         )
         for rowid, text, body, is_from_me, sender, edited_at, summary_info in connection.execute(
             EDITED_MESSAGES_QUERY, (chat_id, after_edit, after_rowid)

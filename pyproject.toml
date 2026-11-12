@@ -5,6 +5,9 @@ description = "Forwards messages between two iMessage group chats"
 requires-python = ">=3.13"
 dependencies = ["python-dotenv"]
 
+[project.scripts]
+bumpass-bot = "bumpass_bot.main:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

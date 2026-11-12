@@ -6,9 +6,9 @@ TEXT_EXPIRY_SECONDS = 300
 FILE_EXPIRY_SECONDS = 60
 
 
-def file_key(attachment):
+def file_key(mime_type):
     # Top-level MIME type only, in case Messages transcodes within a type (e.g. mov -> mp4).
-    return ("file", attachment.mime_type.split("/")[0])
+    return ("file", mime_type.split("/")[0])
 
 
 class SentTracker:
@@ -30,7 +30,7 @@ class SentTracker:
         ]
 
     def record(self, chat_id, key, ttl=TEXT_EXPIRY_SECONDS):
-        # Prune here too: in one-way mode the destination is never consumed from.
+        # Prune here too, since a send whose echo never shows up is never consumed.
         entries = self._live_entries(chat_id)
         entries.append((key, time.monotonic() + ttl))
         self._pending[chat_id] = entries
@@ -48,8 +48,8 @@ class SentTracker:
         self._pending[chat_id] = entries
         return False
 
-    def record_file(self, chat_id, attachment):
-        self.record(chat_id, file_key(attachment), FILE_EXPIRY_SECONDS)
+    def record_file(self, chat_id, mime_type):
+        self.record(chat_id, file_key(mime_type), FILE_EXPIRY_SECONDS)
 
-    def consume_file(self, chat_id, attachment):
-        return self.consume(chat_id, file_key(attachment))
+    def consume_file(self, chat_id, mime_type):
+        return self.consume(chat_id, file_key(mime_type))

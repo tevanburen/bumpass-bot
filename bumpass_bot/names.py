@@ -1,12 +1,14 @@
 import glob
 import sqlite3
+import logging
 import time
-from os import environ
 from os.path import expanduser
 
 CONTACTS_GLOB = expanduser(
     "~/Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"
 )
+logger = logging.getLogger(__name__)
+
 # Re-read Contacts at most this often when a handle isn't found.
 RELOAD_SECONDS = 300
 
@@ -34,17 +36,6 @@ def display_name(nickname, first_name, last_name):
     return nickname or first_name or last_name or None
 
 
-def parse_overrides(raw):
-    """Parse NAME_OVERRIDES: comma-separated "handle=Name" pairs."""
-    overrides = {}
-    for pair in raw.split(","):
-        handle, _, name = pair.partition("=")
-        if handle.strip() and name.strip():
-            overrides[normalize_handle(handle)] = name.strip()
-
-    return overrides
-
-
 def load_contacts():
     names = {}
     for path in glob.glob(CONTACTS_GLOB):
@@ -60,7 +51,6 @@ def load_contacts():
 
 class NameResolver:
     def __init__(self):
-        self._overrides = parse_overrides(environ.get("NAME_OVERRIDES", ""))
         self._contacts = {}
         self._loaded_at = None
         self._reload()
@@ -69,7 +59,7 @@ class NameResolver:
         try:
             self._contacts = load_contacts()
         except Exception as error:
-            print(f"Could not read Contacts, using overrides only: {error}")
+            logger.warning("Could not read Contacts, showing raw handles: %s", error)
         self._loaded_at = time.monotonic()
 
     def lookup(self, handle):
@@ -78,9 +68,6 @@ class NameResolver:
             return "Unknown"
 
         key = normalize_handle(handle)
-        if key in self._overrides:
-            return self._overrides[key]
-
         if key not in self._contacts and time.monotonic() - self._loaded_at > RELOAD_SECONDS:
             self._reload()
 
