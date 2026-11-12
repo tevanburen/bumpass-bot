@@ -13,12 +13,12 @@ ATTACHMENT_WAIT_SECONDS = 60
 SEND_TIMEOUT_SECONDS = 30
 
 
-# When set, only forward ChatA -> ChatB.
-ONE_WAY = environ.get("ONE_WAY") == "1"
-# Reactions are forwarded as text unless this is set to 0.
-REACTIONS = environ.get("REACTIONS") != "0"
-# Edits are forwarded as a new message unless this is set to 0.
-EDITS = environ.get("EDITS") != "0"
+# When set, reactions are forwarded as text.
+REACTIONS = environ.get("REACTIONS") == "1"
+# When set, edits are forwarded as a new message.
+EDITS = environ.get("EDITS") == "1"
+# When set, sends are logged instead of sent, for running against your own chats without posting.
+DRY_RUN = environ.get("DRY_RUN") == "1"
 
 
 def get_chat_ids():
