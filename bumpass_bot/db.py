@@ -71,6 +71,14 @@ ATTACHMENTS_QUERY = """
 # attachment.transfer_state value for a finished transfer.
 TRANSFER_COMPLETE = 5
 
+CHAT_MEMBERS_QUERY = """
+    SELECT h.id
+    FROM chat c
+    JOIN chat_handle_join chj ON chj.chat_id = c.ROWID
+    JOIN handle h ON h.ROWID = chj.handle_id
+    WHERE c.chat_identifier = ?
+"""
+
 LIST_GROUP_CHATS_QUERY = """
     SELECT c.chat_identifier, c.display_name, COUNT(chj.handle_id)
     FROM chat c
@@ -271,6 +279,19 @@ def get_chat_guid(connection, chat_id):
         raise ValueError(f"No chat found with identifier {chat_id}")
 
     return row[0]
+
+
+def get_chat_members(connection, chat_id):
+    """Handles of everyone in the chat except this Mac's own account."""
+    rows = connection.execute(CHAT_MEMBERS_QUERY, (chat_id,))
+    return [handle for (handle,) in rows]
+
+
+def get_chat_name(connection, chat_id):
+    row = connection.execute(
+        "SELECT display_name FROM chat WHERE chat_identifier = ?", (chat_id,)
+    ).fetchone()
+    return row[0] if row and row[0] else None
 
 
 def list_group_chats(connection):

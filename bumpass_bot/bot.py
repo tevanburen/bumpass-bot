@@ -31,6 +31,7 @@ class Bot:
     """
 
     def __init__(self, chat_ids, handlers):
+        self.chat_ids = tuple(chat_ids)
         self.handlers = handlers
         self._connection = db.connect()
         self._names = NameResolver()
@@ -51,6 +52,14 @@ class Bot:
     def name(self, handle):
         """Contact name for a phone number or email, or the handle itself if there is none."""
         return self._names.lookup(handle)
+
+    def chat_name(self, chat_id):
+        """The chat's display name, or its chat_identifier if it has none."""
+        return db.get_chat_name(self._connection, chat_id) or chat_id
+
+    def members(self, chat_id):
+        """Handles of everyone in the chat, not counting the bot's own account."""
+        return db.get_chat_members(self._connection, chat_id)
 
     def send(self, chat_id, text):
         """Send text to a chat by chat_identifier. Logs and returns False if it fails."""
