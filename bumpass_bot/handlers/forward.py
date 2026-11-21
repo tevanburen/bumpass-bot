@@ -11,6 +11,9 @@ from bumpass_bot.formatting import italic, truncate
 QUOTE_MARK = "↪"
 REACTION_PREFIX = "reacted "
 QUOTE_MAX_CHARS = 60
+# A forward leaves out the name line when the bot's last message in that chat was a
+# forward from the same person, nothing else was said since, and it was this recent.
+GROUP_SECONDS = 10 * 60
 
 
 def handle(bot, event):
@@ -39,19 +42,20 @@ def destination_for(chat_id):
 
 
 def forward_message(bot, message, destination):
-    lines = header(bot, message, ":")
+    lines = header(bot, message, destination)
     if message.reply_to:
         lines.append(format_quote(bot, message.reply_to))
 
     if message.text:
         lines.append(message.text)
 
-    # An own message with only files has no text to send.
+    key = group_key(message)
+    # An own or grouped message with only files has no text to send.
     if lines:
-        bot.send(destination, "\n".join(lines))
+        bot.send(destination, "\n".join(lines), key=key)
 
     for attachment in message.attachments:
-        bot.send_file(destination, attachment.path, attachment.mime_type)
+        bot.send_file(destination, attachment.path, attachment.mime_type, key=key)
 
 
 def forward_reaction(bot, reaction, destination):
@@ -59,30 +63,40 @@ def forward_reaction(bot, reaction, destination):
     if not reaction.target or is_forwarded_reaction(reaction.target):
         return
 
-    lines = header(bot, reaction, ":")
+    lines = header(bot, reaction, destination)
     lines.append(format_quote(bot, reaction.target))
     lines.append(f"{REACTION_PREFIX}{reaction.emoji}")
-    bot.send(destination, "\n".join(lines))
+    bot.send(destination, "\n".join(lines), key=group_key(reaction))
 
 
 def forward_edit(bot, edit, destination):
     if not edit.text:
         return
 
-    lines = header(bot, edit, " edited:")
+    # Always named, since "edited" is the point of the message.
+    lines = [] if edit.is_from_me else [f"{bot.name(edit.sender)} edited:"]
     if edit.previous_text:
         lines.append(quote_line(f"was: {shorten(edit.previous_text)}"))
 
     lines.append(edit.text)
-    bot.send(destination, "\n".join(lines))
+    bot.send(destination, "\n".join(lines), key=group_key(edit))
 
 
-def header(bot, event, suffix):
-    # Own messages are forwarded without a header.
+def group_key(event):
+    # Own messages have no name line to leave out, so they never group.
+    return None if event.is_from_me else event.sender
+
+
+def header(bot, event, destination):
+    """The name line, or nothing for own messages and ones grouped under the previous forward."""
     if event.is_from_me:
         return []
 
-    return [f"{bot.name(event.sender)}{suffix}"]
+    # A missing sender handle never groups, so "Unknown:" is always shown.
+    if event.sender is not None and bot.last_send_key(destination, GROUP_SECONDS) == event.sender:
+        return []
+
+    return [f"{bot.name(event.sender)}:"]
 
 
 def shorten(text):

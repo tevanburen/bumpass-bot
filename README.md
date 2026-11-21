@@ -37,6 +37,8 @@ The quote lines are italic. AppleScript can't send formatted text, so it uses Un
 
 Messages you send yourself are forwarded without a header. Images and other files are forwarded after the header as separate messages.
 
+When the bot's last message in a chat was a forward from the same person, sent within 10 minutes, and nobody has written there since, the next forward from that person leaves out the name line. Edits always keep it.
+
 ### Commands
 
 Send one of these on its own in either chat. The bot answers in that chat, and the command isn't forwarded.
@@ -136,6 +138,7 @@ For anything other than a command, write a handler. It's a function that takes t
 
 - Return `True` to stop the handlers after it. Put it before `forward.handle` if it should keep something from being forwarded.
 - Send with `bot.send(chat, text)` and `bot.send_file(chat, path)`, never `send.py` directly. The bot needs to know what it sent, or its own messages come back as new events.
+- Both take an optional `key` to label the send. `bot.last_send_key(chat, max_age_seconds)` returns it while that send is still the latest message in the chat. Forwarding uses this with the sender's handle to group messages.
 - `bot.name(handle)` gives a display name. `bot.chat_ids` are the watched chats, and `bot.chat_name(chat)` and `bot.members(chat)` describe them.
 - A handler that raises is logged and skipped. The other handlers still run.
 
