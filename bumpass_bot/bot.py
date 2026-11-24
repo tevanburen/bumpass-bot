@@ -170,14 +170,14 @@ class Bot:
             chat.last_rowid = new.event.rowid
 
             event = self._without_own_sends(new.event)
-            if event is None:
-                continue
 
-            # Someone else wrote in this chat, so the bot's last send is no longer the latest message.
-            if isinstance(event, Message):
+            # Anything but an echo of the bot's own send means its last send is no longer the
+            # latest message there. That includes messages handlers never get, such as stickers.
+            if isinstance(new.event, Message) and (not new.event.is_from_me or event is not None):
                 self._last_sends.pop(chat.id, None)
 
-            self._dispatch(event)
+            if event is not None:
+                self._dispatch(event)
 
     def _without_own_sends(self, event):
         """Strip what the bot itself sent, which comes back as is_from_me in that chat.
