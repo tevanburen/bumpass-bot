@@ -55,7 +55,7 @@ Requires macOS and [uv](https://docs.astral.sh/uv/).
 ```bash
 uv sync
 cp .env.example .env
-uv run python -m bumpass_bot.list_chats
+uv run python -m bumpass_bot.scripts.list_chats
 ```
 
 `list_chats` prints the `chat_identifier` of every group chat. Put the two you want in `.env`.
@@ -79,6 +79,10 @@ uv run bumpass-bot
 ```
 
 Only messages that arrive after startup are handled. To try changes on your own Mac without posting anything, point `.env` at your own chats and run with `DRY_RUN=1`.
+
+## Helper scripts
+
+One-off commands that read `chat.db` without running the bot live in `bumpass_bot/scripts/`, each with a docstring saying what it does. Run one with `uv run python -m bumpass_bot.scripts.<name>`.
 
 ## How it works
 
@@ -113,7 +117,7 @@ All in `bumpass_bot/`:
 | `names.py` | Phone number and email to Contacts name. |
 | `formatting.py` | Text helpers such as `italic`. |
 | `config.py` | Settings from `.env`. |
-| `list_chats.py` | Prints group chat IDs for setup. |
+| `scripts/` | Helper scripts run on their own, separate from the bot (see "Helper scripts"). |
 
 ## Adding a command
 

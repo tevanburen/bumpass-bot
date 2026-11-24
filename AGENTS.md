@@ -5,7 +5,7 @@ Python 3.13 project managed with uv. See README.md for setup and behavior.
 ## Commands
 
 - `uv sync` installs dependencies.
-- `uv run bumpass-bot` runs the bot. `uv run python -m bumpass_bot.list_chats` lists group chats.
+- `uv run bumpass-bot` runs the bot. Helper scripts live in `bumpass_bot/scripts/` and run with `uv run python -m bumpass_bot.scripts.<name>`. Give each new one a docstring with its purpose and usage instead of listing it in the docs.
 - No tests, and don't add any unless asked.
 
 ## Layout

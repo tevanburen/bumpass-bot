@@ -1,3 +1,8 @@
+"""Prints the chat_identifier, member count and name of every group chat, for setting up .env.
+
+Usage: uv run python -m bumpass_bot.scripts.list_chats
+"""
+
 from bumpass_bot import db
 
 

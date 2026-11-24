@@ -83,6 +83,24 @@ NEW_MESSAGE_FROM_OTHERS_QUERY = """
     LIMIT 1
 """
 
+# Real messages only: no reactions (associated_message_type) or group events like renames (item_type).
+MESSAGE_COUNTS_QUERY = """
+    SELECT h.id, COUNT(*)
+    FROM message m
+    JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
+    JOIN chat c ON c.ROWID = cmj.chat_id
+    JOIN handle h ON h.ROWID = m.handle_id
+    WHERE c.chat_identifier = ?
+      AND m.date >= ?
+      AND m.is_from_me = 0
+      AND m.associated_message_type = 0
+      AND m.item_type = 0
+    GROUP BY h.id
+"""
+
+# message.date counts nanoseconds from 2001-01-01 UTC.
+APPLE_EPOCH_OFFSET_SECONDS = 978307200
+
 CHAT_MEMBERS_QUERY = """
     SELECT h.id
     FROM chat c
@@ -297,6 +315,12 @@ def has_new_message_from_others(connection, chat_id, after_rowid):
     """Whether someone other than this Mac's account wrote in the chat after `after_rowid`."""
     row = connection.execute(NEW_MESSAGE_FROM_OTHERS_QUERY, (chat_id, after_rowid)).fetchone()
     return row is not None
+
+
+def get_message_counts(connection, chat_id, since_unix_seconds):
+    """{handle: messages sent} in the chat since the given time, not counting this Mac's account."""
+    since = int((since_unix_seconds - APPLE_EPOCH_OFFSET_SECONDS) * 1_000_000_000)
+    return dict(connection.execute(MESSAGE_COUNTS_QUERY, (chat_id, since)))
 
 
 def get_chat_members(connection, chat_id):
