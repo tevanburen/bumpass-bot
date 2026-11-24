@@ -1,6 +1,6 @@
 import glob
-import sqlite3
 import logging
+import sqlite3
 import time
 from os.path import expanduser
 
@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 RELOAD_SECONDS = 300
 
 PHONES_QUERY = """
-    SELECT p.ZFULLNUMBER, r.ZNICKNAME, r.ZFIRSTNAME, r.ZLASTNAME
+    SELECT p.ZFULLNUMBER, r.Z_PK, r.ZNICKNAME, r.ZFIRSTNAME, r.ZLASTNAME
     FROM ZABCDPHONENUMBER p JOIN ZABCDRECORD r ON r.Z_PK = p.ZOWNER
 """
 EMAILS_QUERY = """
-    SELECT e.ZADDRESS, r.ZNICKNAME, r.ZFIRSTNAME, r.ZLASTNAME
+    SELECT e.ZADDRESS, r.Z_PK, r.ZNICKNAME, r.ZFIRSTNAME, r.ZLASTNAME
     FROM ZABCDEMAILADDRESS e JOIN ZABCDRECORD r ON r.Z_PK = e.ZOWNER
 """
 
@@ -37,16 +37,19 @@ def display_name(nickname, first_name, last_name):
 
 
 def load_contacts():
-    names = {}
+    """{normalized handle: (name, contact ID)}. The ID is the same for every phone number
+    and email of one contact."""
+    contacts = {}
     for path in glob.glob(CONTACTS_GLOB):
         with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
             for query in (PHONES_QUERY, EMAILS_QUERY):
-                for handle, nickname, first_name, last_name in connection.execute(query):
+                for handle, record_id, nickname, first_name, last_name in connection.execute(query):
                     name = display_name(nickname, first_name, last_name)
                     if handle and name:
-                        names[normalize_handle(handle)] = name
+                        # Record IDs are only unique within one Contacts source.
+                        contacts[normalize_handle(handle)] = (name, (path, record_id))
 
-    return names
+    return contacts
 
 
 class NameResolver:
@@ -62,13 +65,22 @@ class NameResolver:
             logger.warning("Could not read Contacts, showing raw handles: %s", error)
         self._loaded_at = time.monotonic()
 
+    def _find(self, handle):
+        key = normalize_handle(handle)
+        if key not in self._contacts and time.monotonic() - self._loaded_at > RELOAD_SECONDS:
+            self._reload()
+
+        return self._contacts.get(key)
+
     def lookup(self, handle):
         """Return the contact's name, or the raw handle if there is none."""
         if handle is None:
             return "Unknown"
 
-        key = normalize_handle(handle)
-        if key not in self._contacts and time.monotonic() - self._loaded_at > RELOAD_SECONDS:
-            self._reload()
+        contact = self._find(handle)
+        return contact[0] if contact else handle
 
-        return self._contacts.get(key, handle)
+    def contact_id(self, handle):
+        """The same value for every handle of one contact, or the handle itself if it has none."""
+        contact = self._find(handle)
+        return contact[1] if contact else handle
