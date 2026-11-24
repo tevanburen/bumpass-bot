@@ -71,6 +71,18 @@ ATTACHMENTS_QUERY = """
 # attachment.transfer_state value for a finished transfer.
 TRANSFER_COMPLETE = 5
 
+NEW_MESSAGE_FROM_OTHERS_QUERY = """
+    SELECT 1
+    FROM message m
+    JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
+    JOIN chat c ON c.ROWID = cmj.chat_id
+    WHERE c.chat_identifier = ?
+      AND m.ROWID > ?
+      AND m.is_from_me = 0
+      AND m.associated_message_type = 0
+    LIMIT 1
+"""
+
 CHAT_MEMBERS_QUERY = """
     SELECT h.id
     FROM chat c
@@ -279,6 +291,12 @@ def get_chat_guid(connection, chat_id):
         raise ValueError(f"No chat found with identifier {chat_id}")
 
     return row[0]
+
+
+def has_new_message_from_others(connection, chat_id, after_rowid):
+    """Whether someone other than this Mac's account wrote in the chat after `after_rowid`."""
+    row = connection.execute(NEW_MESSAGE_FROM_OTHERS_QUERY, (chat_id, after_rowid)).fetchone()
+    return row is not None
 
 
 def get_chat_members(connection, chat_id):

@@ -36,6 +36,8 @@ class Bot:
         self._connection = db.connect()
         self._names = NameResolver()
         self._sent = SentTracker()
+        # chat_id -> (key, sent_at) of the bot's last send there, until someone else writes in that chat.
+        self._last_sends = {}
         # Fails at startup on a wrong chat ID instead of on the first send.
         self._guids = {chat_id: db.get_chat_guid(self._connection, chat_id) for chat_id in chat_ids}
 
@@ -61,37 +63,58 @@ class Bot:
         """Handles of everyone in the chat, not counting the bot's own account."""
         return db.get_chat_members(self._connection, chat_id)
 
-    def send(self, chat_id, text):
-        """Send text to a chat by chat_identifier. Logs and returns False if it fails."""
+    def send(self, chat_id, text, key=None):
+        """Send text to a chat by chat_identifier. Logs and returns False if it fails.
+
+        `key` labels the send for last_send_key, such as the person a forward is from.
+        """
         logger.info("Send to %s: %r", chat_id, text)
-        if config.DRY_RUN:
-            return True
+        if not config.DRY_RUN:
+            try:
+                osascript.send_message(self._guid(chat_id), text)
+            except Exception:
+                logger.exception("Error sending to %s", chat_id)
+                return False
 
-        try:
-            osascript.send_message(self._guid(chat_id), text)
-        except Exception:
-            logger.exception("Error sending to %s", chat_id)
-            return False
+            # The send comes back as an is_from_me message in that chat; this is how it gets skipped.
+            self._sent.record(chat_id, text)
 
-        # The send comes back as an is_from_me message in that chat; this is how it gets skipped.
-        self._sent.record(chat_id, text)
+        self._last_sends[chat_id] = (key, time.monotonic())
         return True
 
-    def send_file(self, chat_id, path, mime_type=None):
+    def send_file(self, chat_id, path, mime_type=None, key=None):
         """Send a file to a chat. mime_type is guessed from the file name if not given."""
         mime_type = mime_type or mimetypes.guess_type(path)[0] or "application/octet-stream"
         logger.info("Send file to %s: %s", chat_id, path)
-        if config.DRY_RUN:
-            return True
+        if not config.DRY_RUN:
+            try:
+                osascript.send_file(self._guid(chat_id), path)
+            except Exception:
+                logger.exception("Error sending file to %s", chat_id)
+                return False
 
-        try:
-            osascript.send_file(self._guid(chat_id), path)
-        except Exception:
-            logger.exception("Error sending file to %s", chat_id)
-            return False
+            self._sent.record_file(chat_id, mime_type)
 
-        self._sent.record_file(chat_id, mime_type)
+        self._last_sends[chat_id] = (key, time.monotonic())
         return True
+
+    def last_send_key(self, chat_id, max_age_seconds):
+        """The `key` of the bot's last send in this chat, if that is still the chat's latest
+        message and was sent within max_age_seconds. Otherwise None."""
+        last_send = self._last_sends.get(chat_id)
+        if last_send is None:
+            return None
+
+        key, sent_at = last_send
+        if time.monotonic() - sent_at > max_age_seconds:
+            return None
+
+        # Someone may have written there since that chat was last polled.
+        chat = next((chat for chat in self._chats if chat.id == chat_id), None)
+        if chat is None or db.has_new_message_from_others(self._connection, chat_id, chat.last_rowid):
+            return None
+
+        return key
 
     def run(self):
         while True:
@@ -147,6 +170,12 @@ class Bot:
             chat.last_rowid = new.event.rowid
 
             event = self._without_own_sends(new.event)
+
+            # Anything but an echo of the bot's own send means its last send is no longer the
+            # latest message there. That includes messages handlers never get, such as stickers.
+            if isinstance(new.event, Message) and (not new.event.is_from_me or event is not None):
+                self._last_sends.pop(chat.id, None)
+
             if event is not None:
                 self._dispatch(event)
 
